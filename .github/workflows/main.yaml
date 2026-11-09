@@ -2,22 +2,54 @@ name: main-test
 permissions:
   contents: read
   pull-requests: read
-"on": [push]
+"on":
+  push:
+    branches: [main]
+  pull_request:
 
 jobs:
-  test_job:
-    runs-on: ubuntu-latest
-    name: A test job
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]
+        # One cache=true leg per OS, so no two legs race to save the same cache key.
+        setup:
+        - { version: latest, cache: "false" }
+        - { version: 0.23.0, cache: "false" }
+        - { version: 0.23.0, cache: "true" }
+    runs-on: ${{ matrix.os }}
+    name: test (${{ matrix.os }}, ${{ matrix.setup.version }}, cache=${{ matrix.setup.cache }})
+    permissions:
+      contents: read
     steps:
     - name: Checkout
       uses: actions/checkout@v7
     - name: Setup ocm
       id: setup
-      uses: open-component-model/ocm-setup-action@main
-#      with:
-#        version: v0.19.0
-    - name: Output
+      uses: ./
+      with:
+        version: ${{ matrix.setup.version }}
+        cache: ${{ matrix.setup.cache }}
+    - name: Check installed version
+      shell: bash
       run: |
-        echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
-        which ocm
-        ocm --version
+        echo "installed ${{ steps.setup.outputs.version }} at ${{ steps.setup.outputs.path }} (cache-hit: ${{ steps.setup.outputs.cache-hit }})"
+        ocm version
+        if [ "${{ matrix.setup.version }}" != latest ]; then
+          ocm version | grep -F "Version:  ${{ matrix.setup.version }}"
+        fi
+    - name: Remove installed binary to simulate a fresh runner
+      shell: bash
+      run: rm -rf "$(dirname "${{ steps.setup.outputs.path }}")"
+    - name: Setup ocm again
+      id: setup-again
+      uses: ./
+      with:
+        version: ${{ matrix.setup.version }}
+        cache: ${{ matrix.setup.cache }}
+    - name: Expect cache-hit=${{ matrix.setup.cache }}
+      shell: bash
+      run: |
+        test "${{ steps.setup-again.outputs.cache-hit }}" = "${{ matrix.setup.cache }}"
+        ocm version
