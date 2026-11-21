@@ -6,6 +6,8 @@ permissions:
   push:
     branches: [main]
   pull_request:
+  # Called by release.yaml to test the commit before it is tagged.
+  workflow_call: {}
 
 jobs:
   test:
@@ -24,7 +26,7 @@ jobs:
       contents: read
     steps:
     - name: Checkout
-      uses: actions/checkout@v7
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     - name: Setup ocm
       id: setup
       uses: ./
